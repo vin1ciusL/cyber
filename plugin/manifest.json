@@ -1,0 +1,29 @@
+{
+  "manifest_version": 2,
+  "name": "PrivacyGuard - Rastreador & Anti-Hijack",
+  "version": "1.0",
+  "description": "Detector e bloqueador de rastreadores, cookies, fingerprint e hooks.",
+  "permissions": [
+    "webRequest",
+    "webRequestBlocking",
+    "<all_urls>",
+    "cookies",
+    "tabs",
+    "storage"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "browser_action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "PrivacyGuard"
+  },
+  "web_accessible_resources": ["inject.js"]
+}
