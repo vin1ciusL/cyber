@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="header">
+    <h3>PrivacyGuard</h3>
+    <div id="scoreBadge" class="score">--</div>
+  </div>
+  
+  <div class="section">
+    <strong>Conexões 3ª Parte:</strong> <span id="thirdPartyCount">0</span>
+    <ul id="thirdPartyList"></ul>
+  </div>
+
+  <div class="section">
+    <strong>Cookies:</strong>
+    <div>1ª Parte: <span id="c1p">0</span> | 3ª Parte: <span id="c3p">0</span></div>
+    <div>Sessão: <span id="cSess">0</span> | Persistentes: <span id="cPers">0</span></div>
+  </div>
+
+  <div class="section">
+    <strong>Armazenamento HTML5:</strong>
+    <div>localStorage: <span id="ls">0</span> | sessionStorage: <span id="ss">0</span></div>
+  </div>
+
+  <div class="section">
+    <strong>Ameaças Detectadas:</strong>
+    <div id="canvasStatus">Canvas Fingerprint: Não</div>
+    <div id="bounceStatus">Bounce Tracking / Sync: Não</div>
+    <ul id="hijackList"></ul>
+  </div>
+
+  <div class="section">
+    <strong>Bloqueio Personalizado:</strong>
+    <input type="text" id="newBlockDomain" placeholder="ex: analytics.com">
+    <button id="addBlockBtn">Bloquear</button>
+    <ul id="blockList"></ul>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
