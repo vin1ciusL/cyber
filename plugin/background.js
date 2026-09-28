@@ -16,6 +16,7 @@ function initTab(tabId) {
     bounceTrackingDetected: false,
     score: 100
   };
+  return tabData[tabId];
 }
 
 // Extrai eTLD+1 simples
@@ -62,38 +63,46 @@ browser.webRequest.onBeforeRequest.addListener(
         tabInfo.thirdPartyRequests.push(reqDomain);
       }
 
-      // Detecção de Cookie Sync / Bounce Tracking por Query Params (ex: ?uid=, ?id=, ?sync_id=)
-      const urlObj = new URL(url);
-      const params = urlObj.searchParams;
-      const syncKeys = ["uid", "user_id", "sync", "guid", "visitor_id", "id"];
-      for (let key of syncKeys) {
-        if (params.has(key) && params.get(key).length > 8) {
-          tabInfo.bounceTrackingDetected = true;
-          break;
+      // Detecção de Cookie Sync / Bounce Tracking por Query Params
+      try {
+        const urlObj = new URL(url);
+        const params = urlObj.searchParams;
+        const syncKeys = ["uid", "user_id", "sync", "guid", "visitor_id", "id", "bounceuidlocalstorage", "bounceuidcookie"];
+        for (let [key, val] of params.entries()) {
+          if (syncKeys.includes(key.toLowerCase()) || (val && val.length > 8)) {
+            tabInfo.bounceTrackingDetected = true;
+            break;
+          }
         }
-      }
+      } catch (e) {}
 
-      // Detecção de Hijacking/Hook: WebSockets ou Polling contínuo para 3rd party
+      // Detecção de Hijacking/Hook
       if (type === "websocket") {
         tabInfo.hijackThreats.push(`Conexão WebSocket externa para ${reqDomain}`);
       }
     } else {
       tabInfo.firstPartyRequests++;
     }
+
+    tabInfo.score = calculatePrivacyScore(tabInfo);
   },
   { urls: ["<all_urls>"] },
   ["blocking"]
 );
 
-// 2. Análise de Cookies ao carregar a página
-browser.webNavigation.onCompleted.addListener(async (details) => {
-  if (details.frameId !== 0) return;
-  const tabId = details.tabId;
+// 2. Análise de Cookies ao concluir carregamento (usando browser.tabs.onUpdated)
+browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status !== "complete" || !tab.url || !tab.url.startsWith("http")) return;
+
+  if (!tabData[tabId]) {
+    initTab(tabId);
+    tabData[tabId].url = tab.url;
+    tabData[tabId].domain = getBaseDomain(tab.url);
+  }
   const tabInfo = tabData[tabId];
-  if (!tabInfo) return;
 
   try {
-    const cookies = await browser.cookies.getAll({ url: details.url });
+    const cookies = await browser.cookies.getAll({ url: tab.url });
     tabInfo.cookies = { firstParty: 0, thirdParty: 0, session: 0, persistent: 0 };
 
     cookies.forEach(c => {
@@ -111,7 +120,6 @@ browser.webNavigation.onCompleted.addListener(async (details) => {
       }
     });
 
-    // Calcular score inicial
     tabInfo.score = calculatePrivacyScore(tabInfo);
   } catch (err) {
     console.error("Erro ao ler cookies:", err);
@@ -119,34 +127,47 @@ browser.webNavigation.onCompleted.addListener(async (details) => {
 });
 
 // 3. Comunicação com Content Script e Popup
-browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  const tabId = sender.tab ? sender.tab.id : msg.tabId;
+browser.runtime.onMessage.addListener((msg, sender) => {
+  const tabId = (sender && sender.tab) ? sender.tab.id : msg.tabId;
 
   if (msg.action === "reportClientStorage") {
     if (tabData[tabId]) {
       tabData[tabId].storage = msg.data;
       tabData[tabId].score = calculatePrivacyScore(tabData[tabId]);
     }
-  } else if (msg.action === "reportCanvasFingerprint") {
+    return Promise.resolve({ received: true });
+  }
+
+  if (msg.action === "reportCanvasFingerprint") {
     if (tabData[tabId]) {
       tabData[tabId].canvasFingerprintDetected = true;
       tabData[tabId].score = calculatePrivacyScore(tabData[tabId]);
     }
-  } else if (msg.action === "reportHijackIndicator") {
+    return Promise.resolve({ received: true });
+  }
+
+  if (msg.action === "reportHijackIndicator") {
     if (tabData[tabId]) {
       tabData[tabId].hijackThreats.push(msg.threat);
       tabData[tabId].score = calculatePrivacyScore(tabData[tabId]);
     }
-  } else if (msg.action === "getTabData") {
-    sendResponse({
-      data: tabData[msg.tabId] || null,
+    return Promise.resolve({ received: true });
+  }
+
+  if (msg.action === "getTabData") {
+    if (!tabData[msg.tabId]) {
+      initTab(msg.tabId);
+    }
+    return Promise.resolve({
+      data: tabData[msg.tabId],
       blocklist: customBlocklist
     });
-  } else if (msg.action === "updateBlocklist") {
-    customBlocklist = msg.blocklist;
-    sendResponse({ success: true });
   }
-  return true;
+
+  if (msg.action === "updateBlocklist") {
+    customBlocklist = msg.blocklist;
+    return Promise.resolve({ success: true });
+  }
 });
 
 // Fórmula Explícita de Pontuação de Privacidade (0 a 100)

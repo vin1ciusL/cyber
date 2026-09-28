@@ -1,16 +1,20 @@
 document.addEventListener("DOMContentLoaded", async () => {
-  const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-  const activeTab = tabs[0];
-  if (!activeTab) return;
+  try {
+    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    const activeTab = tabs[0];
+    if (!activeTab) return;
 
-  browser.runtime.sendMessage({ action: "getTabData", tabId: activeTab.id }, (res) => {
+    // Comunicação Promise nativa do Firefox
+    const res = await browser.runtime.sendMessage({ action: "getTabData", tabId: activeTab.id });
     if (!res || !res.data) return;
     const data = res.data;
 
+    // Atualiza Score e Contadores na tela
     document.getElementById("scoreBadge").innerText = `${data.score}/100`;
     document.getElementById("thirdPartyCount").innerText = data.thirdPartyRequests.length;
     
     const list = document.getElementById("thirdPartyList");
+    list.innerHTML = "";
     data.thirdPartyRequests.forEach(d => {
       const li = document.createElement("li");
       li.innerText = d;
@@ -29,12 +33,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       document.getElementById("canvasStatus").innerText = "Canvas Fingerprint: DETECTADO";
       document.getElementById("canvasStatus").style.color = "red";
     }
+
     if (data.bounceTrackingDetected) {
       document.getElementById("bounceStatus").innerText = "Bounce Tracking / Sync: DETECTADO";
       document.getElementById("bounceStatus").style.color = "red";
     }
 
     const hList = document.getElementById("hijackList");
+    hList.innerHTML = "";
     data.hijackThreats.forEach(t => {
       const li = document.createElement("li");
       li.innerText = t;
@@ -42,8 +48,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       hList.appendChild(li);
     });
 
-    renderBlocklist(res.blocklist);
-  });
+    renderBlocklist(res.blocklist || []);
+  } catch (err) {
+    console.error("Erro ao carregar dados no popup:", err);
+  }
 
   function renderBlocklist(list) {
     const ul = document.getElementById("blockList");
@@ -55,18 +63,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  document.getElementById("addBlockBtn").addEventListener("click", () => {
+  document.getElementById("addBlockBtn").addEventListener("click", async () => {
     const val = document.getElementById("newBlockDomain").value.trim();
     if (!val) return;
-    browser.runtime.sendMessage({ action: "getTabData", tabId: activeTab.id }, (res) => {
-      const newList = res.blocklist;
-      if (!newList.includes(val)) {
-        newList.push(val);
-        browser.runtime.sendMessage({ action: "updateBlocklist", blocklist: newList }, () => {
-          renderBlocklist(newList);
-          document.getElementById("newBlockDomain").value = "";
-        });
-      }
-    });
+
+    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    const activeTab = tabs[0];
+    const res = await browser.runtime.sendMessage({ action: "getTabData", tabId: activeTab.id });
+
+    const newList = res.blocklist || [];
+    if (!newList.includes(val)) {
+      newList.push(val);
+      await browser.runtime.sendMessage({ action: "updateBlocklist", blocklist: newList });
+      renderBlocklist(newList);
+      document.getElementById("newBlockDomain").value = "";
+    }
   });
 });
